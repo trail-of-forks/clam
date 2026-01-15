@@ -3,6 +3,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/IR/Dominators.h"
@@ -93,7 +94,9 @@ bool LoopPeelerPass::runOnLoop(Loop *L, LPPassManager &LPM) {
   if (!canPeel(L)) {
     return false;
   }
-  auto res = peelLoop(L, m_Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */);
+  ValueToValueMapTy VMap;
+  auto res =
+      peelLoop(L, m_Num, &LI, &SE, DT, &AC, true /* PreserveLCSSA */, VMap);
   return res;
 }
 

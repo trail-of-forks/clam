@@ -1,5 +1,4 @@
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Analysis/CFG.h"
 #include "llvm/Analysis/CallGraph.h"
@@ -34,6 +33,8 @@
 #include "crab/path_analysis/path_analyzer.hpp"
 #include "crab/output/crabir/cfg_printer.hpp"
 #include "crab/output/json/write_json.hh"
+
+#include <optional>
 
 #include "seadsa/AllocWrapInfo.hh"
 #include "seadsa/CompleteCallGraph.hh"
@@ -156,13 +157,13 @@ static std::string appendFunctionNameToFileName(const std::string &filename, Str
 
   
 /** return invariant for block in table but filtering out shadow_varnames **/
-static llvm::Optional<clam_abstract_domain>
+static std::optional<clam_abstract_domain>
 lookup(const abs_dom_map_t &table, const llvm::BasicBlock &block,
        // remove shadow variables
        const std::vector<varname_t> &shadow_varnames) {
   auto it = table.find(&block);
   if (it == table.end()) {
-    return llvm::None;
+    return std::nullopt;
   }
 
   if (shadow_varnames.empty()) {
@@ -635,7 +636,7 @@ bool IntraClam::pathAnalyze(const AnalysisParams &params,
                              post_conditions);
 }
 
-llvm::Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 IntraClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   auto &vfac = m_impl->m_cfg_builder_man.getVarFactory();
@@ -645,7 +646,7 @@ IntraClam::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
   return lookup(m_impl->m_pre_map, *block, shadows);
 }
 
-llvm::Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 IntraClam::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   std::vector<varname_t> shadows;
   auto &vfac = m_impl->m_cfg_builder_man.getVarFactory();
@@ -723,17 +724,17 @@ public:
     }
   }
 
-  Optional<clam_abstract_domain> getPre(const BasicBlock *bb,
-					bool keep_shadows) const {
+  std::optional<clam_abstract_domain> getPre(const BasicBlock *bb,
+                                             bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows) {
       shadows = m_builder_man.getVarFactory().get_shadow_vars();
     }
     return lookup(m_pre_map, *bb, shadows);
   }
-  
-  Optional<clam_abstract_domain> getPost(const BasicBlock *bb,
-					 bool keep_shadows) const {
+
+  std::optional<clam_abstract_domain> getPost(const BasicBlock *bb,
+                                              bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows) {
       shadows = m_builder_man.getVarFactory().get_shadow_vars();
@@ -767,11 +768,12 @@ public:
     return m_query_cache.range(B, V, getPre(&B, false));
   }
 
-  Optional<ClamQueryAPI::TagVector> tags(const Instruction &I) const {
+  std::optional<ClamQueryAPI::TagVector> tags(const Instruction &I) const {
     return m_query_cache.tags(I, getPre(I.getParent(), false));
   }
-  
-  Optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B, const Value &V) const {
+
+  std::optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B,
+                                              const Value &V) const {
     return m_query_cache.tags(B, V, getPre(&B, false));
   }
   
@@ -842,8 +844,8 @@ public:
     }  
   }
 
-  Optional<clam_abstract_domain>
-  getPre(const BasicBlock *block, bool keep_shadows) const {
+  std::optional<clam_abstract_domain> getPre(const BasicBlock *block,
+                                             bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows) {
       shadows = m_crab_builder_man.getVarFactory().get_shadow_vars();
@@ -851,8 +853,8 @@ public:
     return lookup(m_pre_map, *block, shadows);
   }
 
-  Optional<clam_abstract_domain>
-  getPost(const BasicBlock *block, bool keep_shadows) const {
+  std::optional<clam_abstract_domain> getPost(const BasicBlock *block,
+                                              bool keep_shadows) const {
     std::vector<varname_t> shadows;
     if (!keep_shadows) {
       shadows = m_crab_builder_man.getVarFactory().get_shadow_vars();
@@ -877,11 +879,12 @@ public:
     return m_query_cache.range(B, V, getPre(&B, false));    
   }
 
-  Optional<ClamQueryAPI::TagVector> tags(const Instruction &I) const {
+  std::optional<ClamQueryAPI::TagVector> tags(const Instruction &I) {
     return m_query_cache.tags(I, getPre(I.getParent(), false));
   }
-  
-  Optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B, const Value &V) const {
+
+  std::optional<ClamQueryAPI::TagVector> tags(const BasicBlock &B,
+                                              const Value &V) {
     return m_query_cache.tags(B, V, getPre(&B, false));
   }
   
@@ -1203,12 +1206,12 @@ void IntraGlobalClam::analyze(AnalysisParams &params,
   m_impl->analyze(params, abs_dom_assumptions);
 }
 
-Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 IntraGlobalClam::getPre(const BasicBlock *block, bool keep_shadows) const {
   return m_impl->getPre(block, keep_shadows);
 }
 
-Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 IntraGlobalClam::getPost(const BasicBlock *block, bool keep_shadows) const {
   return m_impl->getPost(block, keep_shadows);  
 }
@@ -1239,11 +1242,13 @@ ConstantRange IntraGlobalClam::range(const BasicBlock &B, const Value &V) const 
   return m_impl->range(B, V);
 }
 
-Optional<ClamQueryAPI::TagVector> IntraGlobalClam::tags(const Instruction &I) const {
+std::optional<ClamQueryAPI::TagVector>
+IntraGlobalClam::tags(const Instruction &I) const {
   return m_impl->tags(I);
 }
 
-Optional<ClamQueryAPI::TagVector> IntraGlobalClam::tags(const BasicBlock &B, const Value &V) const {
+std::optional<ClamQueryAPI::TagVector>
+IntraGlobalClam::tags(const BasicBlock &B, const Value &V) const {
   return m_impl->tags(B,V);
 }
 
@@ -1280,12 +1285,12 @@ void InterGlobalClam::analyze(AnalysisParams &params,
   m_impl->analyze(params, assumptions);
 }
 
-Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 InterGlobalClam::getPre(const BasicBlock *bb, bool keep_shadows) const {
   return m_impl->getPre(bb, keep_shadows);
 }
 
-Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 InterGlobalClam::getPost(const BasicBlock *bb, bool keep_shadows) const {
   return m_impl->getPost(bb, keep_shadows);
 }
@@ -1316,11 +1321,13 @@ ConstantRange InterGlobalClam::range(const BasicBlock &B, const Value &V) const 
   return m_impl->range(B, V);
 }
 
-Optional<ClamQueryAPI::TagVector> InterGlobalClam::tags(const Instruction &I) const {
+std::optional<ClamQueryAPI::TagVector>
+InterGlobalClam::tags(const Instruction &I) const {
   return m_impl->tags(I);
 }
 
-Optional<ClamQueryAPI::TagVector> InterGlobalClam::tags(const BasicBlock &B, const Value &V) const {
+std::optional<ClamQueryAPI::TagVector>
+InterGlobalClam::tags(const BasicBlock &B, const Value &V) const {
   return m_impl->tags(B,V);
 }
 
@@ -1450,33 +1457,32 @@ bool ClamPass::runOnModule(Module &M) {
   abs_dom_map_t abs_dom_assumptions /*no assumptions*/;    
   m_ga->analyze(m_params, abs_dom_assumptions);
 
-  
-//   if (builder_params.dot_cfg) {
-//     for (auto &F : M) {
-//       if (m_cfg_builder_man->hasCfg(F)) {
-//         cfg_t &cfg = m_cfg_builder_man->getCfg(F);
-// #if 1
-// 	// Print invariants 
-//         auto pre_fn = [this](const basic_block_label_t &node)
-//             -> boost::optional<clam_abstract_domain> {
-//           if (const BasicBlock *BB = node.get_basic_block()) {
-//             llvm::Optional<clam_abstract_domain> res = getPre(BB);
-//             if (res.hasValue()) {
-//               return res.getValue();
-//             }
-//           }
-//           return boost::optional<clam_abstract_domain>();
-//         };
-//         auto post_fn = [this](const basic_block_label_t &node)
-//             -> boost::optional<clam_abstract_domain> {
-//           if (const BasicBlock *BB = node.get_basic_block()) {
-//             llvm::Optional<clam_abstract_domain> res = getPost(BB);
-//             if (res.hasValue()) {
-//               return res.getValue();
-//             }
-//           }
-//           return boost::optional<clam_abstract_domain>();
-//         };
+  //   if (builder_params.dot_cfg) {
+  //     for (auto &F : M) {
+  //       if (m_cfg_builder_man->hasCfg(F)) {
+  //         cfg_t &cfg = m_cfg_builder_man->getCfg(F);
+  // #if 1
+  // 	// Print invariants
+  //         auto pre_fn = [this](const basic_block_label_t &node)
+  //             -> boost::optional<clam_abstract_domain> {
+  //           if (const BasicBlock *BB = node.get_basic_block()) {
+  //             std::optional<clam_abstract_domain> res = getPre(BB);
+  //             if (res.hasValue()) {
+  //               return res.getValue();
+  //             }
+  //           }
+  //           return boost::optional<clam_abstract_domain>();
+  //         };
+  //         auto post_fn = [this](const basic_block_label_t &node)
+  //             -> boost::optional<clam_abstract_domain> {
+  //           if (const BasicBlock *BB = node.get_basic_block()) {
+  //             std::optional<clam_abstract_domain> res = getPost(BB);
+  //             if (res.hasValue()) {
+  //               return res.getValue();
+  //             }
+  //           }
+  //           return boost::optional<clam_abstract_domain>();
+  //         };
 
 // 	crab::cfg::cfg_to_dot<cfg_t, clam_abstract_domain>(cfg, pre_fn, post_fn,
 // 							   m_ga->getChecksDB());
@@ -1526,7 +1532,9 @@ void ClamPass::getAnalysisUsage(AnalysisUsage &AU) const {
     AU.addRequired<seadsa::CompleteCallGraph>();
   }
 
+#if LLVM_VERSION_MAJOR < 18
   AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
+#endif
   AU.addRequired<clam::NameValues>();
 }
 
@@ -1562,13 +1570,13 @@ const CrabBuilderManager &ClamPass::getCfgBuilderMan() const {
 }
   
 // return invariants that hold at the entry of block
-llvm::Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 ClamPass::getPre(const llvm::BasicBlock *block, bool keep_shadows) const {
   return m_ga->getPre(block, keep_shadows);
 }
 
 // return invariants that hold at the exit of block
-llvm::Optional<clam_abstract_domain>
+std::optional<clam_abstract_domain>
 ClamPass::getPost(const llvm::BasicBlock *block, bool keep_shadows) const {
   return m_ga->getPost(block, keep_shadows);  
 }

@@ -34,7 +34,7 @@ public:
   var_t mkRefVar();
 
   // Create a fresh variable from a Value
-  llvm::Optional<var_t> mkVar(const llvm::Value &v);
+  std::optional<var_t> mkVar(const llvm::Value &v);
 
   // Inverse of mkVar. Return null if no Value found.
   const Value* getLLVMVar(const var_t &v) const;
@@ -89,9 +89,10 @@ private:
   lit_cache_t m_lit_cache;
   rgn_cache_t m_rgn_cache;
 
-  llvm::Optional<crabBoolLit> getBoolLit(const llvm::Value &v);
-  llvm::Optional<crabIntLit> getIntLit(const llvm::Value &v, bool IntCstAsSigned);
-  llvm::Optional<crabRefLit> getRefLit(const llvm::Value &v);
+  std::optional<crabBoolLit> getBoolLit(const llvm::Value &v);
+  std::optional<crabIntLit> getIntLit(const llvm::Value &v,
+                                      bool IntCstAsSigned);
+  std::optional<crabRefLit> getRefLit(const llvm::Value &v);
 
   crab::variable_type regionTypeToCrabType(RegionInfo rgnInfo);
 };
@@ -110,33 +111,26 @@ crab_lit_ref_t crabLitFactoryImpl::getLit(const Value &v, bool IntCstAsSigned) {
   // which types are tracked or not. They only use type information
   // and not the track level.
   if (isBool(&t)) {
-    Optional<crabBoolLit> lit = getBoolLit(v);
-    if (lit.hasValue()) {
+    std::optional<crabBoolLit> lit = getBoolLit(v);
+    if (lit.has_value()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
-          std::make_shared<crabBoolLit>(lit.getValue()));
+          std::make_shared<crabBoolLit>(lit.value()));
       m_lit_cache.insert({&v, ref});
       return ref;
     }
   } else if (isInteger(&t)) {
-    Optional<crabIntLit> lit = getIntLit(v, IntCstAsSigned);
-    if (lit.hasValue()) {
+    std::optional<crabIntLit> lit = getIntLit(v, IntCstAsSigned);
+    if (lit.has_value()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
-          std::make_shared<crabIntLit>(lit.getValue()));
-      if (IntCstAsSigned) {
-	// We only cache an integer constant if it is
-	// signed. Otherwise, we can get an inconsistent integer if we
-	// cached a signed one and then we ask for an unsigned (or
-	// vice-versa). A better solution is to have two caches one
-	// for signed and one for unsigned.
-	m_lit_cache.insert({&v, ref});
-      }
+          std::make_shared<crabIntLit>(lit.value()));
+      m_lit_cache.insert({&v, ref});
       return ref;
     }
   } else if (t.isPointerTy()) {
-    Optional<crabRefLit> lit = getRefLit(v);
-    if (lit.hasValue()) {
+    std::optional<crabRefLit> lit = getRefLit(v);
+    if (lit.has_value()) {
       crab_lit_ref_t ref = std::static_pointer_cast<crabLit>(
-          std::make_shared<crabRefLit>(lit.getValue()));
+          std::make_shared<crabRefLit>(lit.value()));
       m_lit_cache.insert({&v, ref});
       return ref;
     }
@@ -217,7 +211,9 @@ var_t crabLitFactoryImpl::mkScalarVar(Region rgn) {
   
   unsigned bitwidth = 0;
   if (const Value *v = rgn.getSingleton()) {
-    Type *ty = cast<PointerType>(v->getType())->getPointerElementType();
+    // Type *ty = v->getType();
+    unsigned bw = rgn.getRegionInfo().getType().second; // your scalar bitwidth
+    Type *ty = IntegerType::get(v->getContext(), bw);
     bitwidth = ty->getIntegerBitWidth();
     if (rgn.getRegionInfo().getType().first == region_type_t::INT_REGION &&
         bitwidth <= 1) {
@@ -288,7 +284,7 @@ var_t crabLitFactoryImpl::mkRegionVar(RegionInfo rgnInfo) {
   return var_t(m_vfac.get(), type);
 }
 
-Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
+std::optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   if (isBool(v)) {
     return mkBoolVar();
   } else if (isInteger(v)) {
@@ -297,7 +293,7 @@ Optional<var_t> crabLitFactoryImpl::mkVar(const Value &v) {
   } else if (isReference(v, m_params)) {
     return mkRefVar();
   }
-  return None;
+  return std::nullopt;
 }
 
 const Value* crabLitFactoryImpl::getLLVMVar(const var_t &v) const {
@@ -370,7 +366,7 @@ number_t crabLitFactoryImpl::getIntCst(const crab_lit_ref_t ref) const {
   return lit->getInt();
 }
 
-Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
+std::optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
   if (isBool(v)) {
     if (const ConstantInt *c = dyn_cast<const ConstantInt>(&v)) {
       // -- constant boolean
@@ -391,10 +387,10 @@ Optional<crabBoolLit> crabLitFactoryImpl::getBoolLit(const Value &v) {
       }
     }
   }
-  return None;
+  return std::nullopt;
 }
 
-Optional<crabRefLit> crabLitFactoryImpl::getRefLit(const Value &v) {
+std::optional<crabRefLit> crabLitFactoryImpl::getRefLit(const Value &v) {
   if (isa<ConstantPointerNull>(&v)) {
     // -- constant null
     return crabRefLit();
@@ -405,14 +401,15 @@ Optional<crabRefLit> crabLitFactoryImpl::getRefLit(const Value &v) {
       // nondeterministic value.
       return crabRefLit(var_t(m_vfac.get(), REF_TYPE));
     } else {
-      WeakVH VH(const_cast<Value*>(&v));      
+      WeakVH VH(const_cast<Value*>(&v));
       return crabRefLit(var_t(m_vfac[VH], REF_TYPE));
     }
   }
-  return None;
+  return std::nullopt;
 }
 
-Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v, bool IntCstAsSigned) {
+std::optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v,
+                                                        bool IntCstAsSigned) {
   if (isInteger(v)) {
     if (const ConstantInt *c = dyn_cast<const ConstantInt>(&v)) {
       // -- constant integer
@@ -435,7 +432,7 @@ Optional<crabIntLit> crabLitFactoryImpl::getIntLit(const Value &v, bool IntCstAs
       }
     }
   }
-  return None;
+  return std::nullopt;
 }
 
 crabLitFactory::crabLitFactory(variable_factory_t &vfac,
@@ -474,7 +471,7 @@ var_t crabLitFactory::mkRegionVar(RegionInfo rgnInfo) {
   return m_impl->mkRegionVar(rgnInfo);
 }
 
-Optional<var_t> crabLitFactory::mkVar(const Value &v) {
+std::optional<var_t> crabLitFactory::mkVar(const Value &v) {
   return m_impl->mkVar(v);
 }
 

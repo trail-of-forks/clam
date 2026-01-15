@@ -1,8 +1,12 @@
-#include "llvm/ADT/Optional.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Module.h"
+
 #include "ClamQueryCache.hh"
 #include "clam/CfgBuilder.hh"
 #include "clam/Support/Debug.hh"
 #include "crab/analysis/fwd_analyzer.hpp"
+
+#include <optional>
 
 namespace clam {
 using namespace llvm;
@@ -13,7 +17,9 @@ static unsigned getBitWidth(const DataLayout &DL, const Type *Ty) {
     const IntegerType *ITy = cast<IntegerType>(Ty);
     return ITy->getBitWidth();
   } else if (Ty->isPointerTy()) {
-    return DL.getPointerTypeSizeInBits(const_cast<Type*>(Ty));
+    // LLVM 20 / opaque pointers: use address space for pointer width.
+    unsigned AS = llvm::cast<llvm::PointerType>(Ty)->getAddressSpace();
+    return DL.getPointerSizeInBits(AS);
   } else {
     CLAM_ERROR("getConstantRange should called only on integers or pointers");
   }
@@ -135,15 +141,15 @@ void ClamQueryCache::populateInstCache(const BasicBlock &BB, clam_abstract_domai
     // 0 for LHS and 1,...,N for the rest of operands in the RHS
     DenseMap<unsigned, ConstantRange> argMap;
 
-    Optional<var_t> LHSVar = crabCfgBuilder->getCrabVariable(*I);
-    if (LHSVar.hasValue()) {
-      argMap.insert({0, getRange(LHSVar.getValue(), absVal, is_bottom, bitwidth)});
+    std::optional<var_t> LHSVar = crabCfgBuilder->getCrabVariable(*I);
+    if (LHSVar.has_value()) {
+      argMap.insert({0, getRange(LHSVar.value(), absVal, is_bottom, bitwidth)});
     }
     for (unsigned i=0, e=I->getNumOperands();i!=e;++i) {
       Value *argOp = I->getOperand(i);
-      Optional<var_t> RHSVar = crabCfgBuilder->getCrabVariable(*argOp);
-      if (RHSVar.hasValue()) {
-	argMap.insert({i+1, getRange(RHSVar.getValue(), absVal, is_bottom, bitwidth)});
+      std::optional<var_t> RHSVar = crabCfgBuilder->getCrabVariable(*argOp);
+      if (RHSVar.has_value()) {
+	argMap.insert({i+1, getRange(RHSVar.value(), absVal, is_bottom, bitwidth)});
       } else {
 	argMap.insert({i+1, getFullRange(bitwidth)});
       }
@@ -153,8 +159,14 @@ void ClamQueryCache::populateInstCache(const BasicBlock &BB, clam_abstract_domai
 }
   
 ConstantRange
+ClamQueryCache::range(const Instruction &I,
+                      std::optional<clam_abstract_domain> invAtEntry) const {
+  return range(I, 0, invAtEntry);
+}
+
+ConstantRange
 ClamQueryCache::range(const Instruction &Inst, unsigned i, 
-                      Optional<clam_abstract_domain> invAtEntry) const {
+                      std::optional<clam_abstract_domain> invAtEntry) const {
 
   if (i >= Inst.getNumOperands()) {
     CLAM_ERROR("range method is accessing out of bounds!");
@@ -165,10 +177,10 @@ ClamQueryCache::range(const Instruction &Inst, unsigned i,
     return *cachedInterval;
   }
 
-  if (invAtEntry.hasValue()) {
+  if (invAtEntry.has_value()) {
     const BasicBlock &BB = *(Inst.getParent());
     if (m_crab_builder_man.hasCfg(*(BB.getParent()))) {
-      populateInstCache(BB, invAtEntry.getValue());
+      populateInstCache(BB, invAtEntry.value());
     }
     const ConstantRange* interval = getCachedRange(Inst, i);
     if (interval != nullptr) {
@@ -180,34 +192,36 @@ ClamQueryCache::range(const Instruction &Inst, unsigned i,
 }
   
 
-ConstantRange ClamQueryCache::range(const BasicBlock &BB, const Value &V,
-				    Optional<clam_abstract_domain> invAtEntry) const {
+ConstantRange
+ClamQueryCache::range(const BasicBlock &BB, const Value &V,
+                      std::optional<clam_abstract_domain> invAtEntry) const {
   auto it = m_range_value_cache.find({&BB, &V});
   if (it != m_range_value_cache.end()) {
     return it->second;
   }
 
-  unsigned bitwidth = getBitWidth(BB, V);  
-  if (invAtEntry.hasValue()) {
-    if (invAtEntry.getValue().is_bottom()) {
+  unsigned bitwidth = getBitWidth(BB, V);
+  if (invAtEntry.has_value()) {
+    if (invAtEntry.value().is_bottom()) {
       // we don't cache it
       return getEmptyRange(bitwidth);
     }
     const Function &F = *(BB.getParent());
     if (auto crabCfgBuilder = m_crab_builder_man.getCfgBuilder(F)) {
-      Optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
-      if (crabVar.hasValue()) {
-	auto crabInterval = invAtEntry.getValue().at(crabVar.getValue());
-	if (crabInterval.lb().is_finite() && crabInterval.ub().is_finite()) {
-	  auto min = *(crabInterval.lb().number());
-	  auto max = *(crabInterval.ub().number());
-	  if (min.fits_int64() && max.fits_int64()) {
-	    ConstantRange interval = getConstantRange((int64_t)min, (int64_t)max, bitwidth);
-	    m_range_value_cache.insert(std::make_pair(std::make_pair(&BB, &V),
-						      interval));
-	    return interval;
-	  }
-	}
+      std::optional<var_t> crabVar = crabCfgBuilder->getCrabVariable(V);
+      if (crabVar.has_value()) {
+        auto crabInterval = invAtEntry.value()[crabVar.value()];
+        if (crabInterval.lb().is_finite() && crabInterval.ub().is_finite()) {
+          auto min = *(crabInterval.lb().number());
+          auto max = *(crabInterval.ub().number());
+          if (min.fits_int64() && max.fits_int64()) {
+            ConstantRange interval =
+                getConstantRange((int64_t)min, (int64_t)max, bitwidth);
+            m_range_value_cache.insert(
+                std::make_pair(std::make_pair(&BB, &V), interval));
+            return interval;
+          }
+        }
       }
     }
   }
@@ -236,11 +250,11 @@ void ClamQueryCache::populateTagCache(const BasicBlock &BB, clam_abstract_domain
       continue;
     }
     clam_abstract_domain &absVal = vis.get_abs_value();
-    Optional<var_t> LHSRefVar = crabCfgBuilder->getCrabVariable(*I);
-    Optional<var_t> LHSRgnVar = crabCfgBuilder->getCrabRegionVariable(fParent, *I);
-    if (LHSRefVar.hasValue() && LHSRgnVar.hasValue()) {
+    std::optional<var_t> LHSRefVar = crabCfgBuilder->getCrabVariable(*I);
+    std::optional<var_t> LHSRgnVar = crabCfgBuilder->getCrabRegionVariable(fParent, *I);
+    if (LHSRefVar.has_value() && LHSRgnVar.has_value()) {
       std::vector<uint64_t> tags;
-      bool known = absVal.get_tags(LHSRgnVar.getValue(), LHSRefVar.getValue(), tags);
+      bool known = absVal.get_tags(LHSRgnVar.value(), LHSRefVar.value(), tags);
       if (known) {
 	m_tag_inst_cache.insert({I, std::move(tags)});
       }
@@ -249,19 +263,19 @@ void ClamQueryCache::populateTagCache(const BasicBlock &BB, clam_abstract_domain
 }
 
   
-Optional<ClamQueryAPI::TagVector>
+std::optional<ClamQueryAPI::TagVector>
 ClamQueryCache::tags(const Instruction &I,
-		     Optional<clam_abstract_domain> invAtEntry) const {
+		     std::optional<clam_abstract_domain> invAtEntry) const {
 
   auto it = m_tag_inst_cache.find(&I);
   if (it != m_tag_inst_cache.end()) {
     return it->second;
   }
   
-  if (invAtEntry.hasValue()) {
+  if (invAtEntry.has_value()) {
     const BasicBlock &BB = *(I.getParent());
     if (m_crab_builder_man.hasCfg(*(BB.getParent()))) {
-      populateTagCache(BB, invAtEntry.getValue());
+      populateTagCache(BB, invAtEntry.value());
     }
     auto it = m_tag_inst_cache.find(&I);
     if (it != m_tag_inst_cache.end()) {
@@ -269,37 +283,37 @@ ClamQueryCache::tags(const Instruction &I,
     }
   }
   
-  return None;
+  return std::nullopt;
 }
 
-Optional<ClamQueryAPI::TagVector>
+std::optional<ClamQueryAPI::TagVector>
 ClamQueryCache::tags(const BasicBlock &BB, const Value &V,
-		     Optional<clam_abstract_domain> invAtEntry) const {
+		     std::optional<clam_abstract_domain> invAtEntry) const {
 
   auto it = m_tag_value_cache.find({&BB, &V});
   if (it != m_tag_value_cache.end()) {
     return it->second;
   }
   
-  if (invAtEntry.hasValue()) {
+  if (invAtEntry.has_value()) {
     const Function &F = *(BB.getParent());
     if (CfgBuilder *cfgBuilder =  m_crab_builder_man.getCfgBuilder(F)) {
-      Optional<var_t> LHSRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
-      Optional<var_t> LHSRefVar = cfgBuilder->getCrabVariable(V);
-      if (LHSRgnVar.hasValue() && LHSRefVar.hasValue()) {
+      std::optional<var_t> LHSRgnVar = cfgBuilder->getCrabRegionVariable(F, V);
+      std::optional<var_t> LHSRefVar = cfgBuilder->getCrabVariable(V);
+      if (LHSRgnVar.has_value() && LHSRefVar.has_value()) {
 	ClamQueryAPI::TagVector tags;
-	bool known = invAtEntry.getValue().get_tags(LHSRgnVar.getValue(),
-						    LHSRefVar.getValue(), tags);
+	bool known = invAtEntry.value().get_tags(LHSRgnVar.value(),
+						    LHSRefVar.value(), tags);
 	if (known) {
 	  m_tag_value_cache.insert({{&BB, &V}, tags});
 	  return tags;
 	} else {
-	  return None;
+	  return std::nullopt;
 	}
       }
     }
   }
-  return None;
+  return std::nullopt;
 }
 
 } // end namespace clam

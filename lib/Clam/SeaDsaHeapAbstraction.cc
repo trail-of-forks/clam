@@ -9,7 +9,6 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ImmutableSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
@@ -216,7 +215,7 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodes(
   Graph &G = m_dsa->getGraph(f);
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (f.getName().startswith("shadow.mem")) {
+  if (f.getName().starts_with("shadow.mem")) {
     return;
   }
 
@@ -292,7 +291,7 @@ void SeaDsaHeapAbstractionImpl::computeEquivClasses(const llvm::Function &f) {
   }
 
   Graph &G = m_dsa->getGraph(f);
-  if (f.getName().startswith("shadow.mem")) {
+  if (f.getName().starts_with("shadow.mem")) {
     return;
   }
 
@@ -367,7 +366,7 @@ void SeaDsaHeapAbstractionImpl::computeReadModNewNodesFromCallSite(
 
   // hook: skip shadow mem functions created by SeaHorn
   // We treat them as readnone functions
-  if (CS.getCallee()->getName().startswith("shadow.mem")) {
+  if (CS.getCallee()->getName().starts_with("shadow.mem")) {
     return;
   }
 
@@ -767,7 +766,7 @@ const llvm::Value *SeaDsaHeapAbstractionImpl::getSingleton(
   if (const Value *v = n->getUniqueScalar()) {
     if (const GlobalVariable *gv = dyn_cast<const GlobalVariable>(v)) {
       seadsa_heap_abs_impl::isIntegerOrBool is_typed;
-      if (is_typed(gv->getType()->getPointerElementType()))
+      if (is_typed(gv->getValueType()))
         return v;
     }
   }

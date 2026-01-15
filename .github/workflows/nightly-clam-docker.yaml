@@ -4,11 +4,11 @@ name: Nightly
 
 # Controls when the action will run.
 on:
-  # Triggers the workflow on push or pull request events but only for the dev14 branch
+  # Triggers the workflow on push or pull request events but only for the dev20 branch
   schedule:
     - cron: 0 0 * * *  # run every day at UTC 00:00
   workflow_dispatch:
-    branches: dev14
+    branches: dev20
     inputs:
       Triggerer:
         description: 'Triggered by:'
@@ -29,9 +29,9 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v2
         with:
-          ref: dev14 
+          ref: dev20 
       - name: Build clam and run tests
-        run: docker build -t seahorn/clam-llvm14:nightly -f docker/clam.Dockerfile .
+        run: docker build -t seahorn/clam-llvm20:nightly -f docker/clam.Dockerfile .
       # Logging in using this mechanism prints the following warning
       # WARNING! Your password will be stored unencrypted in /home/runner/.docker/config.json.
       # There does not seem to be an easy way around it though using docker actions may mitigate
@@ -42,4 +42,4 @@ jobs:
       - name: Tag and push clam (nightly)
         if: ${{ github.event_name == 'schedule' }}  # only push if nightly run
         run: |
-          docker push seahorn/clam-llvm14:nightly 
+          docker push seahorn/clam-llvm20:nightly 

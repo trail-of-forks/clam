@@ -23,11 +23,10 @@ class LowerCstExpr : public ModulePass {
     return nullptr;
   }
 
-  Instruction *lowerCstExpr(ConstantExpr *CstExp, Instruction *InsertionLoc) {
-    Instruction *NewI = CstExp->getAsInstruction();
-    // insert before
-    InsertionLoc->getParent()->getInstList().insert(InsertionLoc->getIterator(),
-                                                    NewI);
+  llvm::Instruction *lowerCstExpr(llvm::ConstantExpr *CstExp,
+                                  llvm::Instruction *InsertionLoc) {
+    llvm::Instruction *NewI = CstExp->getAsInstruction();
+    NewI->insertBefore(InsertionLoc); // LLVM 20-safe
     return NewI;
   }
 

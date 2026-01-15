@@ -22,10 +22,10 @@
 #include "crab/domains/generic_abstract_domain.hpp"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/Pass.h"
 
 #include <memory>
+#include <optional>
 
 // forward declarations
 namespace clam {
@@ -70,15 +70,15 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  virtual llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-						      bool keep_shadows) const = 0;
+  virtual std::optional<clam_abstract_domain>
+  getPre(const llvm::BasicBlock *b, bool keep_shadows) const = 0;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  virtual llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-						       bool keep_shadows) const = 0;
-  
+  virtual std::optional<clam_abstract_domain>
+  getPost(const llvm::BasicBlock *b, bool keep_shadows) const = 0;
+
   /**
    * Return a database with all checks.
    **/
@@ -90,7 +90,7 @@ public:
   virtual bool hasFeasibleEdge(const llvm::BasicBlock *b1,
 			       const llvm::BasicBlock *b2) const = 0;
 };
-  
+
 /**
  * Global analysis of a module
  *
@@ -109,7 +109,7 @@ public:
  *    ga.analyze(aparams, assumptions);
  *    for (auto &f: m) {
  *       for (auto &b: f) {
- *         llvm::Optional<clam_abstract_domain> dom = ga.getPre(&b);
+ *         std::optional<clam_abstract_domain> dom = ga.getPre(&b);
  *         if (dom.hasValue()) {
  *            crab::outs << dom.getValue() << "\n";
  *         }
@@ -149,14 +149,14 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-                                              bool keep_shadows = false) const override;
+  std::optional<clam_abstract_domain>
+  getPre(const llvm::BasicBlock *b, bool keep_shadows = false) const override;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-                                               bool keep_shadows = false) const override;
+  std::optional<clam_abstract_domain>
+  getPost(const llvm::BasicBlock *b, bool keep_shadows = false) const override;
 
   /**
    * Return a database with all checks.
@@ -179,10 +179,11 @@ public:
   llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
-					       const llvm::Value &V) const override;
-  
+  std::optional<ClamQueryAPI::TagVector>
+  tags(const llvm::Instruction &I) const override;
+
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+                                              const llvm::Value &V) const override;
 };
 
 class InterGlobalClam: public ClamGlobalAnalysis {
@@ -224,14 +225,14 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-                                              bool keep_shadows = false) const override;
+  std::optional<clam_abstract_domain>
+  getPre(const llvm::BasicBlock *b, bool keep_shadows = false) const override;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-                                               bool keep_shadows = false) const override;
+  std::optional<clam_abstract_domain>
+  getPost(const llvm::BasicBlock *b, bool keep_shadows = false) const override;
 
   /**
    * Return a database with all checks.
@@ -254,9 +255,11 @@ public:
   llvm::ConstantRange range(const llvm::BasicBlock &B,
 			    const llvm::Value &V) const override;
 
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::Instruction &I) const override;
-  llvm::Optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
-					       const llvm::Value &V) const override;
+  std::optional<ClamQueryAPI::TagVector>
+  tags(const llvm::Instruction &I) const override;
+
+  std::optional<ClamQueryAPI::TagVector> tags(const llvm::BasicBlock &B,
+                                              const llvm::Value &V) const override;
 };
 
 /**
@@ -307,14 +310,14 @@ public:
   /**
    * return invariants that hold at the entry of BB
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
-                                              bool KeepShadows = false) const;
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *BB,
+                                             bool KeepShadows = false) const;
 
   /**
    * return invariants that hold at the exit of BB
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
-                                               bool KeepShadows = false) const;
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *BB,
+                                              bool KeepShadows = false) const;
 
   /**
    * Return true if there might be a feasible edge between b1 and b2
@@ -364,7 +367,7 @@ public:
  *    AnalysisParams aparams;
  *    ic.analyze(aparams);
  *    for (auto &b: fun) {
- *      llvm::Optional<clam_abstract_domain> dom = ic.getPre(&b);
+ *      std::optional<clam_abstract_domain> dom = ic.getPre(&b);
  *      if (dom.hasValue()) {
  *         crab::outs << dom.getValue() << "\n";
  *      }
@@ -442,14 +445,14 @@ public:
   /**
    * Return invariants that hold at the entry of b
    **/
-  llvm::Optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
-                                              bool keep_shadows = false) const;
+  std::optional<clam_abstract_domain> getPre(const llvm::BasicBlock *b,
+                                             bool keep_shadows = false) const;
 
   /**
    * Return invariants that hold at the exit of b
    **/
-  llvm::Optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
-                                               bool keep_shadows = false) const;
+  std::optional<clam_abstract_domain> getPost(const llvm::BasicBlock *b,
+                                              bool keep_shadows = false) const;
 
   /**
    * Return a database with all checks.

@@ -21,7 +21,7 @@ public:
       return false;
 
     // -- only promote mallocs in top level functions
-    if (!F.getName().equals("main"))
+    if (F.getName() != "main")
       return false;
 
     bool changed = false;
@@ -35,17 +35,18 @@ public:
 	const Function *fn = CB.getCalledFunction();
 	if (!fn && CB.getCalledOperand())
 	  fn = dyn_cast<const Function>(CB.getCalledOperand()->stripPointerCasts());
-	
-	if (fn && fn->getName().equals("malloc")) {
-	  if (PointerType *pty = dyn_cast<PointerType>(I.getType())) {
-	    unsigned addrSpace = 0;
-	    Value *nv = new AllocaInst(pty->getPointerElementType(), addrSpace,
-				       CB.getArgOperand(0), "malloc", &I);
-	    I.replaceAllUsesWith(nv);
-	    changed = true;
-	  }
-	} else if (fn && fn->getName().equals("free"))
-	  kill.push_back(&I);
+
+        if (fn && (fn->getName() == "malloc")) {
+          if (PointerType *pty = dyn_cast<PointerType>(I.getType())) {
+            unsigned addrSpace = 0;
+            Type *elemTy = Type::getInt8Ty(I.getContext());
+            Value *nv = new AllocaInst(elemTy, addrSpace, CB.getArgOperand(0),
+                                       "malloc", &I);
+            I.replaceAllUsesWith(nv);
+            changed = true;
+          }
+        } else if (fn && (fn->getName() == "free"))
+          kill.push_back(&I);
       }
     }
 

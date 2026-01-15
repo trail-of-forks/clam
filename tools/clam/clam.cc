@@ -5,6 +5,7 @@
 #include "clam/config.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -242,7 +243,9 @@ int main(int argc, char **argv) {
    **/
 
   // kill unused internal global
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createGlobalDCEPass());
+#endif
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
 
   // -- promote alloca's to registers
@@ -258,7 +261,9 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createCFGSimplificationPass());
   }
   // -- ensure one single exit point per function
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+#endif
   // -- remove unreachable blocks
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   if (LowerSwitch) {
@@ -296,7 +301,9 @@ int main(int argc, char **argv) {
   // -- ensure one single exit point per function
   //    LowerUnsignedICmpPass and LowerSelect can add multiple
   //    returns.
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
+#endif
 
   if (!DisableCrab) {
     /// -- Add some properties to check
@@ -324,8 +331,10 @@ int main(int argc, char **argv) {
     // -- remove dead edges and blocks
     pass_manager.add(llvm::createCFGSimplificationPass());
     // -- remove global strings and values
+#if LLVM_VERSION_MAJOR < 20
     pass_manager.add(llvm::createGlobalDCEPass());
-    
+#endif
+
     if (PromoteAssume) {
       // -- promote verifier.assume to llvm.assume intrinsics
       pass_manager.add(clam::createPromoteAssumePass());

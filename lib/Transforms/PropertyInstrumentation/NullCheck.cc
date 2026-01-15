@@ -10,6 +10,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -112,7 +113,7 @@ void NullCheck::insertNullCheck(Value *Ptr, IRBuilder<> &B, Instruction *I) {
         new ICmpInst(ICmpInst::ICMP_NE /*SGT*/, Ptr,
                      Constant::getNullValue(Ptr->getType()), "null_check");
     auto InsertPt = B.GetInsertPoint();
-    B.GetInsertBlock()->getInstList().insert(InsertPt, Cond);
+    Cond->insertInto(B.GetInsertBlock(), InsertPt);
     GtNull = Cond;
   }
 

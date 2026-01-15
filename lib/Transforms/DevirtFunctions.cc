@@ -1,6 +1,7 @@
 #include "clam/Transforms/DevirtFunctions.hh"
 #include "clam/config.h"
 #include "llvm/Analysis/CallGraph.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/CallPromotionUtils.h"
@@ -72,10 +73,11 @@ static void removeBlock(BasicBlock *BB, LLVMContext &ctx) {
     if (!I.use_empty()) {
       I.replaceAllUsesWith(UndefValue::get(I.getType()));
     }
-    BB->getInstList().pop_back();
+    I.eraseFromParent();
   }
-  // Add unreachable terminator
-  BB->getInstList().push_back(new UnreachableInst(ctx));
+  // Insert an unreachable terminator (LLVM 20 style).
+  llvm::IRBuilder<> B(BB->getContext());
+  B.CreateUnreachable();
 }   
 ///
 /// Create a sequence of if-then-else statements at the location of
@@ -158,12 +160,8 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
           if (CE->getOpcode() == Instruction::BitCast) {
             if (PointerType *ppTy =
                     dyn_cast<PointerType>(CE->getOperand(0)->getType())) {
-              pTy = dyn_cast<PointerType>(ppTy->getPointerElementType());
-              if (pTy) {
-                assert(
-                    isa<FunctionType>(pTy->getPointerElementType()) &&
-                    "The type of called value is not a pointer to a function");
-              }
+              auto *fTy = CB.getFunctionType();
+              pTy = PointerType::get(fTy, ppTy->getAddressSpace());
             }
           }
         }
@@ -177,8 +175,7 @@ AliasSetId typeAliasId(CallBase &CB, bool LookThroughCast) {
 
   pTy = dyn_cast<PointerType>(CB.getCalledOperand()->getType());
   assert(pTy && "Unexpected call not through a pointer");
-  assert(isa<FunctionType>(pTy->getPointerElementType()) &&
-         "The type of called value is not a pointer to a function");
+  pTy = PointerType::get(CB.getFunctionType(), pTy->getAddressSpace());
   return pTy;
 }
 
@@ -217,12 +214,12 @@ void CallSiteResolverByTypes::populateTypeAliasSets() {
       continue;
 
     // -- skip seahorn and verifier specific intrinsics
-    if (F.getName().startswith("seahorn."))
+    if (F.getName().starts_with("seahorn."))
       continue;
-    if (F.getName().startswith("verifier."))
+    if (F.getName().starts_with("verifier."))
       continue;
     // -- assume entry point is never called indirectly
-    if (F.getName().equals("main"))
+    if (F.getName() == "main")
       continue;
 
     // -- add F to its corresponding alias set (keep sorted the Targets)

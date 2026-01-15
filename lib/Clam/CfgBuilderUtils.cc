@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <optional>
 
 namespace clam {
 
@@ -93,7 +94,7 @@ bool isTrackedType(const Type &ty, const CrabBuilderParams &params) {
 
 bool isTracked(const Value &v, const CrabBuilderParams &params) {
   // -- ignore any shadow variable created by seahorn
-  // if (v.getName().startswith("shadow.mem"))
+  // if (v.getName().starts_with("shadow.mem"))
   // return false;
 
   return isTrackedType(*v.getType(), params);
@@ -177,35 +178,30 @@ bool isIntArray(const Type &T) {
 // }
 
 bool isAssertFn(const Function &F) {
-  return (F.getName().equals("verifier.assert") ||
-          F.getName().equals("crab.assert") ||
-	  F.getName().equals("__VERIFIER_assert") || 
-          F.getName().equals("__CRAB_assert"));
+  return (F.getName() == "verifier.assert" || F.getName() == "crab.assert" ||
+          F.getName() == "__VERIFIER_assert" || F.getName() == "__CRAB_assert");
 }
 
 bool isSeaHornFail(const Function &F) {
-  return (F.getName().equals("seahorn.fail"));
+  return (F.getName() == "seahorn.fail");
 }
 
 bool isErrorFn(const Function &F) {
-  return (F.getName().equals("seahorn.error") ||
-          F.getName().equals("verifier.error") ||
-          F.getName().equals("__VERIFIER_error") ||
-          F.getName().equals("__SEAHORN_error"));
+  return (F.getName() == "seahorn.error" || F.getName() == "verifier.error" ||
+          F.getName() == "__VERIFIER_error" ||
+          F.getName() == "__SEAHORN_error");
 }
 
 bool isAssumeFn(const Function &F) {
-  return (F.getName().equals("verifier.assume") ||
-          F.getName().equals("__VERIFIER_assume") ||
-	  F.getName().equals("__SEA_assume") ||
-          F.getName().equals("__CRAB_assume") ||
-	  F.getName().equals("llvm.assume"));
+  return (F.getName() == "verifier.assume" ||
+          F.getName() == "__VERIFIER_assume" || F.getName() == "__SEA_assume" ||
+          F.getName() == "__CRAB_assume" || F.getName() == "llvm.assume");
 }
 
 bool isNotAssumeFn(const Function &F) {
-  return (F.getName().equals("verifier.assume.not") ||
-          F.getName().equals("__VERIFIER_assume_not") ||
-          F.getName().equals("__CRAB_assume_not"));
+  return (F.getName() == "verifier.assume.not" ||
+          F.getName() == "__VERIFIER_assume_not" ||
+          F.getName() == "__CRAB_assume_not");
 }
 
 bool isVerifierCall(const Function &F) {
@@ -221,9 +217,8 @@ static bool isSeaHornIntrinsic(const Function &F) {
 }
 
 bool isCrabIntrinsic(const Function &F) {
-  return (F.isDeclaration() &&
-	  (F.getName().startswith("__CRAB_intrinsic_") ||
-	   isSeaHornIntrinsic(F)));
+  return (F.isDeclaration() && (F.getName().starts_with("__CRAB_intrinsic_") ||
+                                isSeaHornIntrinsic(F)));
 }
 
 std::string getCrabIntrinsicName(const Function &F) {
@@ -244,7 +239,7 @@ std::string getCrabIntrinsicName(const Function &F) {
 }
 
 bool isZeroInitializer(const Function &F) {
-  return F.getName().startswith("verifier.zero_initializer");
+  return F.getName().starts_with("verifier.zero_initializer");
 }
 
 bool isZeroInitializer(const CallInst &CI) {
@@ -258,7 +253,7 @@ bool isZeroInitializer(const CallInst &CI) {
 }
 
 bool isIntInitializer(const Function &F) {
-  return F.getName().startswith("verifier.int_initializer");
+  return F.getName().starts_with("verifier.int_initializer");
 }
 
 bool isIntInitializer(const CallInst &CI) {
@@ -410,8 +405,8 @@ bool AllUsesAreIgnoredInst(llvm::Value &V) {
   for (auto &U : V.uses()) {
     if (CallInst *CI = dyn_cast<CallInst>(U.getUser())) {
       if (Function *CalledF = dyn_cast<Function>(CI->getCalledOperand())) {
-        if (CalledF->getName().startswith("llvm.dbg.value") ||
-            CalledF->getName().startswith("llvm.lifetime")) {
+        if (CalledF->getName().starts_with("llvm.dbg.value") ||
+            CalledF->getName().starts_with("llvm.lifetime")) {
           continue;
         }
       }
@@ -433,8 +428,10 @@ template <> class po_iterator_storage<BasicBlockPtrSet, true> {
 public:
   po_iterator_storage(BasicBlockPtrSet &VSet) : Visited(VSet) {}
   po_iterator_storage(const po_iterator_storage &S) : Visited(S.Visited) {}
-  bool insertEdge(Optional<const BasicBlock *> src, const BasicBlock *dst)
-  { return Visited.insert(dst).second; }
+  bool insertEdge(std::optional<const BasicBlock *> src,
+                  const BasicBlock *dst) {
+    return Visited.insert(dst).second;
+  }
   void finishPostorder(const BasicBlock *bb) {}
 };
 } // namespace llvm

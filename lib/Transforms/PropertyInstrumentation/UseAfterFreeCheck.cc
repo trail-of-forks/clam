@@ -11,6 +11,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Metadata.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -32,10 +33,11 @@ namespace clam {
 using namespace llvm;
 
 static Value *getCastedInt8PtrValue(IRBuilder<> &B, Value *Ptr) {
-  auto *PT = cast<PointerType>(Ptr->getType());
-  if (PT->getPointerElementType()->isIntegerTy(8))
+  if (Ptr->getType() ==
+      PointerType::get(IntegerType::get(B.getContext(), 8), 0))
     return Ptr;
-  return B.CreateBitCast(Ptr, Type::getInt8PtrTy(B.getContext()));
+  return B.CreateBitCast(
+      Ptr, PointerType::get(IntegerType::get(B.getContext(), 8), 0));
 }
 
 class UseAfterFreeCheck : public llvm::ModulePass {
@@ -202,7 +204,8 @@ bool UseAfterFreeCheck::runOnModule(llvm::Module &M) {
     AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
     NotDanglingFn = dyn_cast<Function>(
         M.getOrInsertFunction("__CRAB_intrinsic_is_unfreed_or_null", as,
-                              Type::getInt1Ty(ctx), Type::getInt8PtrTy(ctx))
+                              Type::getInt1Ty(ctx),
+                              PointerType::get(IntegerType::get(ctx, 8), 0))
             .getCallee());
   }
 

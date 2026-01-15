@@ -49,12 +49,12 @@ public:
 	if (!fn && CB.getCalledOperand()) {
 	  fn = dyn_cast<const Function>(CB.getCalledOperand()->stripPointerCasts());
 	}
-	
-	if (fn && (fn->getName().equals("verifier.assume") ||
-		   fn->getName().equals("verifier.assume.not"))) {
-	  
-	  Changed = true;
-	  Value *arg = CB.getArgOperand(0);
+
+        if (fn && ((fn->getName() == "verifier.assume") ||
+                   (fn->getName() == "verifier.assume.not"))) {
+
+          Changed = true;
+          Value *arg = CB.getArgOperand(0);
 	  
 	  // already used in llvm.assume.
 	  if (hasAssumeUsers(*arg)) {
@@ -65,23 +65,23 @@ public:
 	  /* insert after verifier.assume, otherwise, verifier assume
            might get simplified away */
 	  Builder.SetInsertPoint(I.getParent(), ++BasicBlock::iterator(I));
-	  if (fn->getName().equals("verifier.assume.not")) {
-	    arg = Builder.CreateNot(arg);
-	  }
-	  
-	  CallInst *c = Builder.CreateAssumption(arg);
-	  /*
+          if (fn->getName() == "verifier.assume.not") {
+            arg = Builder.CreateNot(arg);
+          }
+
+          CallInst *c = Builder.CreateAssumption(arg);
+          /*
 	    mark this assumption so that we know who inserted it
 	    use c->getMetadata(crallvm) to test.
 	  */
-	  c->setMetadata(F.getParent()->getMDKindID("clam"),
-			 MDNode::get(ctx, None));
-	  
-	  /*
-	    enqueue verifier.assume to be removed
-	  */
-	  to_remove.push_back(&I);
-	}
+          c->setMetadata(F.getParent()->getMDKindID("clam"),
+                         MDNode::get(ctx, std::nullopt));
+
+          /*
+            enqueue verifier.assume to be removed
+          */
+          to_remove.push_back(&I);
+        }
       }
     }
 

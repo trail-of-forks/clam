@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.3)
 
 project(Clam)
-set (Clam_VERSION_MAJOR 14)
+set (Clam_VERSION_MAJOR 20)
 set (Clam_VERSION_MINOR 0)
 set (Clam_VERSION_PATCH 0)
 set (Clam_VERSION_TWEAK "rc0")
@@ -12,7 +12,7 @@ cmake_policy(SET CMP0077 NEW)
 endif()
 
 ## LLVM 14 requires c++14
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standard to conform to")
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS NO)
 
@@ -231,7 +231,58 @@ endif ()
 
 
 if (TopLevel)
-  find_package(LLVM 14 CONFIG)
+  # Set zstd search paths to ensure CMake finds zstd from Homebrew
+  # This is required because LLVM's link interface expects zstd::libzstd_shared target
+  set(ZSTD_SEARCH_PATHS "")
+  if (NOT zstd_ROOT)
+    if (EXISTS "/opt/homebrew/opt/zstd")
+      # ARM Mac (Apple Silicon) Homebrew path
+      set(zstd_ROOT "/opt/homebrew/opt/zstd")
+      list(APPEND ZSTD_SEARCH_PATHS "/opt/homebrew/opt/zstd")
+    elseif (EXISTS "/usr/local/opt/zstd")
+      # Intel Mac Homebrew path
+      set(zstd_ROOT "/usr/local/opt/zstd")
+      list(APPEND ZSTD_SEARCH_PATHS "/usr/local/opt/zstd")
+    endif()
+  else()
+    list(APPEND ZSTD_SEARCH_PATHS "${zstd_ROOT}")
+  endif()
+
+  # Add standard Homebrew paths as fallback
+  if (APPLE)
+    list(APPEND ZSTD_SEARCH_PATHS
+      "/opt/homebrew/opt/zstd"
+      "/usr/local/opt/zstd")
+  endif()
+
+  # Try to locate zstd early so LLVM's imported targets can resolve
+  find_package(zstd CONFIG QUIET)
+  if (NOT TARGET zstd::libzstd_shared)
+    find_package(ZSTD QUIET)
+    if (TARGET ZSTD::ZSTD)
+      add_library(zstd::libzstd_shared ALIAS ZSTD::ZSTD)
+    endif()
+  endif()
+  if (NOT TARGET zstd::libzstd_shared)
+    # Fallback manual discovery if no config package is available
+    find_path(zstd_INCLUDE_DIR NAMES zstd.h
+              HINTS ${ZSTD_SEARCH_PATHS}
+              PATH_SUFFIXES include)
+    find_library(zstd_LIBRARY NAMES zstd libzstd
+                 HINTS ${ZSTD_SEARCH_PATHS}
+                 PATH_SUFFIXES lib)
+    if (zstd_INCLUDE_DIR AND zstd_LIBRARY)
+      add_library(zstd::libzstd_shared UNKNOWN IMPORTED)
+      set_target_properties(zstd::libzstd_shared PROPERTIES
+          INTERFACE_INCLUDE_DIRECTORIES "${zstd_INCLUDE_DIR}"
+          IMPORTED_LOCATION "${zstd_LIBRARY}")
+      message(STATUS "Found zstd: ${zstd_LIBRARY}")
+    else()
+      message(WARNING "zstd not found. LLVM may fail to configure. Install zstd: brew install zstd")
+    endif()
+  endif()
+
+  find_package(LLVM 20 CONFIG)
   if (NOT LLVM_FOUND)
     ExternalProject_Get_Property (llvm INSTALL_DIR)
     set (LLVM_ROOT ${INSTALL_DIR})
@@ -263,9 +314,12 @@ if (TopLevel)
 	"\tLLMV_BUILD_TYPE=${LLVM_BUILD_TYPE}\n"
 	"\tCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}\n"
 	"Runtime errors might occur.")
-      if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND 
+      if (LLVM_BUILD_TYPE MATCHES "Release|RelWithDebInfo" AND
           CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
 	message(STATUS "Assuming that mixing Release and RelWithDebInfo is allowed.")
+      elseif (LLVM_BUILD_TYPE MATCHES "Debug|RelWithDebInfo" AND
+              CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+	message(STATUS "Assuming that mixing Debug and RelWithDebInfo is allowed.")
       else()
 	ExternalProject_Get_Property (llvm INSTALL_DIR)
 	set (LLVM_ROOT ${INSTALL_DIR})

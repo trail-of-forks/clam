@@ -4,6 +4,7 @@
 
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -234,13 +235,18 @@ int main(int argc, char **argv) {
 
   // -- turn all functions internal so that we can apply some global
   // -- optimizations inline them if requested
+  // createInternalizePass removed from legacy PM in LLVM 20
+#if LLVM_VERSION_MAJOR < 20
   auto PreserveMain = [=](const llvm::GlobalValue &GV) {
     return GV.getName() == "main";
   };
   pass_manager.add(llvm::createInternalizePass(PreserveMain));
+#endif
 
   if (Devirtualize) {
-    pass_manager.add(llvm::createWholeProgramDevirtPass(nullptr, nullptr));    
+#if LLVM_VERSION_MAJOR < 20
+    pass_manager.add(llvm::createWholeProgramDevirtPass(nullptr, nullptr));
+#endif
     pass_manager.add(clam::createDevirtualizeFunctionsPass());
   }
 
@@ -253,10 +259,14 @@ int main(int argc, char **argv) {
   }
 
   // kill unused internal global
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createGlobalDCEPass());
+#endif
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());
   // -- global optimizations
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createGlobalOptimizerPass());
+#endif
 
   // -- SSA
   pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
@@ -296,12 +306,16 @@ int main(int argc, char **argv) {
     // pass_manager.add(clam::createPromoteMallocPass());
     // // kill unused internal global
     // pass_manager.add(llvm::createGlobalDCEPass());
+#if LLVM_VERSION_MAJOR < 20
     pass_manager.add(
         llvm::createGlobalDCEPass()); // kill unused internal global
+#endif
     // -- promote malloc to alloca
     pass_manager.add(clam::createPromoteMallocPass());
+#if LLVM_VERSION_MAJOR < 20
     pass_manager.add(
         llvm::createGlobalDCEPass()); // kill unused internal global
+#endif
     // XXX: for svcomp ssh programs we need to run twice to break all
     // relevant allocas
     breakAllocas(pass_manager);
@@ -343,14 +357,19 @@ int main(int argc, char **argv) {
     pass_manager.add(llvm::createLICMPass()); // LICM needs alias analysis
     pass_manager.add(llvm::createPromoteMemoryToRegisterPass());
     // dead loop elimination
+#if LLVM_VERSION_MAJOR < 20
     pass_manager.add(llvm::createLoopDeletionPass());
+#endif
     // cleanup unnecessary blocks
     pass_manager.add(llvm::createCFGSimplificationPass());
   }
 
   // -- ensure one single exit point per function
+  // -- ensure one single exit point per function
+#if LLVM_VERSION_MAJOR < 20
   pass_manager.add(llvm::createUnifyFunctionExitNodesPass());
   pass_manager.add(llvm::createGlobalDCEPass());
+#endif
   pass_manager.add(llvm::createDeadCodeEliminationPass());
   // -- remove unreachable blocks also dead cycles
   pass_manager.add(clam::createRemoveUnreachableBlocksPass());

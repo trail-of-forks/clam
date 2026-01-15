@@ -27,6 +27,7 @@
 #include "crab/config.h"
 #include "crab/support/debug.hpp"
 
+#include <optional>
 #include <type_traits>
 
 using namespace llvm;
@@ -315,18 +316,18 @@ public:
 // Generate bitcode for the value of v if it is a constant
 Constant *getConstantInt(CfgBuilder *clamCfgBuilder, clam_abstract_domain inv, const Value &v) {
   if (v.getType()->isIntegerTy()) {
-    llvm::Optional<var_t> lhs = clamCfgBuilder->getCrabVariable(v);
-    if (lhs.hasValue()) {
-      auto interval = inv[lhs.getValue()];
+    std::optional<var_t> lhs = clamCfgBuilder->getCrabVariable(v);
+    if (lhs.has_value()) {
+      auto interval = inv[lhs.value()];
       if (boost::optional<number_t> constant_opt = interval.singleton()) {
 	if ((*constant_opt).fits_int64()) {
 	  return ConstantInt::get(v.getType(), (int64_t)(*constant_opt), 10);	      
 	}
       } else {
-      CRAB_LOG("clam-opt",
-	       crab::outs() << "Found crab variable " << lhs.getValue();
-	       llvm::errs() << " for " << v << " ";
-	       crab::outs() << "but " << interval << " is not a constant\n";);
+        CRAB_LOG("clam-opt", crab::outs()
+                                 << "Found crab variable " << lhs.value();
+                 llvm::errs() << " for " << v << " ";
+                 crab::outs() << "but " << interval << " is not a constant\n";);
       }
     } else {
       CRAB_LOG("clam-opt",
@@ -539,10 +540,10 @@ static bool markDeadBlocksAndEdges(ClamGlobalAnalysis  &clam,
   }
 
   // Mark whether the block is dead
-  llvm::Optional<clam_abstract_domain> pre = 
-    clam.getPre(&B, false /*do not keep ghost variables*/);    
-  if (pre.hasValue()) {
-    if (pre.getValue().is_bottom()) {
+  std::optional<clam_abstract_domain> pre =
+      clam.getPre(&B, false /*do not keep ghost variables*/);
+  if (pre.has_value()) {
+    if (pre.value().is_bottom()) {
       CRAB_LOG("clam-opt",
 	       llvm::errs() << "clam-opt detected dead block "
 	       << B.getName () << " in function "
@@ -562,21 +563,21 @@ static void removeDeadBlock(BasicBlock *BB, LLVMContext &ctx) {
   for (BasicBlock *Succ : successors(BB)) {
     Succ->removePredecessor(BB);
   }
-  // Zap all the instructions in the block.
-  while (!BB->empty()) {
-    Instruction &I = BB->back();
-    // If this instruction is used, replace uses with an arbitrary value.
-    // Because control flow can't get here, we don't care what we replace the
-    // value with.  Note that since this block is unreachable, and all values
-    // contained within it must dominate their uses, that all uses will
-    // eventually be removed (they are themselves dead).
-    if (!I.use_empty()) {
-      I.replaceAllUsesWith(UndefValue::get(I.getType()));
+
+  // Replace uses of values defined in BB (only for non-void).
+  for (llvm::Instruction &Inst : *BB) {
+    if (!Inst.use_empty() && !Inst.getType()->isVoidTy()) {
+      Inst.replaceAllUsesWith(llvm::UndefValue::get(Inst.getType()));
     }
-    BB->getInstList().pop_back();
   }
-  // Add unreachable terminator
-  BB->getInstList().push_back(new UnreachableInst(ctx));
+
+  // Delete instructions safely.
+  while (!BB->empty())
+    BB->back().eraseFromParent();
+
+  // Insert an unreachable terminator (LLVM 20 style).
+  llvm::IRBuilder<> B(BB);
+  B.CreateUnreachable();
 }
 
 // Remove an edge  
@@ -658,7 +659,9 @@ bool Optimizer::runOnModule(Module &M) {
   B.addAttribute(Attribute::NoInline);
   // LLVM removed all calls to verifier.assume if marked as ReadNone
   // or ReadOnly even if we mark it as OptimizeNone.
-  B.addAttribute(Attribute::InaccessibleMemOnly);  
+#if LLVM_VERSION_MAJOR < 18
+  B.addAttribute(Attribute::InaccessibleMemOnly);
+#endif
   AttributeList as = AttributeList::get(ctx, AttributeList::FunctionIndex, B);
   m_assumeFn = dyn_cast<Function>(M.getOrInsertFunction("verifier.assume", as,
                                                         Type::getVoidTy(ctx),
@@ -716,44 +719,47 @@ bool Optimizer::runOnFunction(Function &F) {
 	m_invLoc == InvariantsLocation::LOOP_HEADER || 
 	m_invLoc == InvariantsLocation::ALL) {
       const bool keep_ghost = false;
-      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
-      if (pre.hasValue()) {
-	if (m_invLoc == InvariantsLocation::BLOCK ||
-	    m_invLoc == InvariantsLocation::ALL) {
-	  auto csts = pre.getValue().to_linear_constraint_system();
-	  change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
-	} else {
-	  assert(m_invLoc == InvariantsLocation::LOOP_HEADER);
-	  LoopInfo *LI = m_li(&F); // it can be nullptr
-	  if (LI && LI->isLoopHeader(&B)) {
-	    auto csts = pre.getValue().to_linear_constraint_system();
-	    change |= instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
-	  }
-	}
+      std::optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.has_value()) {
+        if (m_invLoc == InvariantsLocation::BLOCK ||
+            m_invLoc == InvariantsLocation::ALL) {
+          auto csts = pre.value().to_linear_constraint_system();
+          change |=
+              instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
+        } else {
+          assert(m_invLoc == InvariantsLocation::LOOP_HEADER);
+          LoopInfo *LI = m_li(&F); // it can be nullptr
+          if (LI && LI->isLoopHeader(&B)) {
+            auto csts = pre.value().to_linear_constraint_system();
+            change |=
+                instrumentBlock(csts, &B, F.getContext(), m_cg, dt, m_assumeFn);
+          }
+        }
       }
     }
     
     if ((m_invLoc == InvariantsLocation::LOAD_INST ||
 	 m_invLoc == InvariantsLocation::ALL) && readMemory(B)) {
       const bool keep_ghost = true;
-      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
-      if (pre.hasValue()) {
-	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
-	assert(cfg_builder_ptr);
-	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
-	change |= instrumentLoadInst(pre.getValue(), cfg.get_node(bb_label),
-				     F.getContext(), m_cg, m_assumeFn);
+      std::optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.has_value()) {
+        auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
+        assert(cfg_builder_ptr);
+        basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
+        change |= instrumentLoadInst(pre.value(), cfg.get_node(bb_label),
+                                     F.getContext(), m_cg, m_assumeFn);
       }
     }
 
     if (m_replaceWithConstants) {
       const bool keep_ghost = false;
-      llvm::Optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
-      if (pre.hasValue()) {
-	auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
-	assert(cfg_builder_ptr);	
-	basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
-	change |= constantReplacement(cfg_builder_ptr, pre.getValue(), cfg.get_node(bb_label));
+      std::optional<clam_abstract_domain> pre = m_clam.getPre(&B, keep_ghost);
+      if (pre.has_value()) {
+        auto cfg_builder_ptr = m_clam.getCfgBuilderMan().getCfgBuilder(F);
+        assert(cfg_builder_ptr);
+        basic_block_label_t bb_label = cfg_builder_ptr->getCrabBasicBlock(&B);
+        change |= constantReplacement(cfg_builder_ptr, pre.value(),
+                                      cfg.get_node(bb_label));
       }
     }
   }
@@ -831,7 +837,9 @@ void OptimizerPass::getAnalysisUsage(AnalysisUsage &AU) const {
   if (!m_clam) {
     AU.addRequired<clam::ClamPass>();
   }
+#if LLVM_VERSION_MAJOR < 18
   AU.addRequired<UnifyFunctionExitNodesLegacyPass>();
+#endif
   AU.addRequired<CallGraphWrapperPass>();
   AU.addPreserved<CallGraphWrapperPass>();
   if (requireDominatorTree(InvLoc)) {

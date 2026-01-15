@@ -89,11 +89,14 @@ class EmitBndChecksImpl {
     // isSequence(), IsCyclic(), etc.
 
     llvm::Value *vptr;
-    if (LoadInst *loadI = dyn_cast<LoadInst>(&I))
+    Type *elemTy = nullptr;
+    if (LoadInst *loadI = dyn_cast<LoadInst>(&I)) {
       vptr = loadI->getPointerOperand();
-    else if (StoreInst *storeI = dyn_cast<StoreInst>(&I))
+      elemTy = loadI->getType();
+    } else if (StoreInst *storeI = dyn_cast<StoreInst>(&I)) {
       vptr = storeI->getPointerOperand();
-    else
+      elemTy = storeI->getValueOperand()->getType();
+    } else
       CLAM_ERROR(
           "Expect adding bound check assertions at load/store instrucitons");
     auto it = m_ref_bnd_map.find(vptr);
@@ -111,7 +114,6 @@ class EmitBndChecksImpl {
                          << "\n");
       var_t size = it->second.first;
       var_t offset = it->second.second;
-      Type *elemTy = vptr->getType()->getPointerElementType();
       const llvm::DataLayout *dl = getInsDatalayout(I);
       unsigned size_of = dl->getTypeSizeInBits(elemTy) / 8;
       bb.assertion(offset >= number_t(0), getDebugLoc(&I, m_assertionId++));
@@ -280,11 +282,11 @@ public:
     var_t size_op1 = m_lfac.mkIntVar(width);
     var_t offset_op2 = m_lfac.mkIntVar(width);
     var_t size_op2 = m_lfac.mkIntVar(width);
-    if (!s.getOp1().hasValue()) { // op1 is nullptr
+    if (!s.getOp1().has_value()) { // op1 is nullptr
       bb.assign(offset_op1, number_t(0));
       bb.assign(size_op1, number_t(0));
     } else {
-      assert(s.getOp1().hasValue());
+      assert(s.getOp1().has_value());
       auto it = m_ref_bnd_map.find(&vtrue);
       if (it == m_ref_bnd_map.end()) {
         CLAM_WARNING("Could not find from select ptr "
@@ -295,11 +297,11 @@ public:
         offset_op1 = it->second.second;
       }
     }
-    if (!s.getOp2().hasValue()) { // op2 is nullptr
+    if (!s.getOp2().has_value()) { // op2 is nullptr
       bb.assign(offset_op2, number_t(0));
       bb.assign(size_op2, number_t(0));
     } else {
-      assert(s.getOp2().hasValue());
+      assert(s.getOp2().has_value());
       auto it = m_ref_bnd_map.find(&vfalse);
       if (it == m_ref_bnd_map.end()) {
         CLAM_WARNING("Could not find from select ptr "

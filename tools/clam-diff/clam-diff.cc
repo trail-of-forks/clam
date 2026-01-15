@@ -3,6 +3,7 @@
  **/
 
 #include <llvm/Support/CommandLine.h>
+#include <llvm/Support/ManagedStatic.h>
 
 #include <clam/CrabDomain.hh>
 #include <clam/CrabDomainParser.hh>
@@ -367,7 +368,6 @@ static void print_diff(const clam::json::global_analysis_results &gres1,
 }
 
 int main(int argc, char *argv[]) {
-  llvm::llvm_shutdown_obj shutdown; // calls llvm_shutdown() on exit
   llvm::cl::HideUnrelatedOptions(ClamDiffOptCat);  
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "Compare the JSON output of two Clam analyses\n" 
@@ -391,5 +391,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   print_diff(*res1, *res2);
+  llvm::llvm_shutdown();
   return 0;
 }

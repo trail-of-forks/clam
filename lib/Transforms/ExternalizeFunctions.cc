@@ -1,4 +1,3 @@
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/BasicBlock.h"
@@ -15,6 +14,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <optional>
 
 using namespace llvm;
 
@@ -34,18 +35,18 @@ namespace clam {
 class ExternalizeFunctions : public ModulePass {
 
   struct MatchRegex : public std::unary_function<Function *, bool> {
-    llvm::Optional<llvm::Regex> m_re;
+    std::optional<llvm::Regex> m_re;
     MatchRegex(std::string s) {
       if (s != "") {
         m_re = llvm::Regex(s);
         std::string Error;
-        if (!m_re->isValid(Error)) {
-          m_re = llvm::None;
+        if (!m_re.value().isValid(Error)) {
+          m_re = std::nullopt;
         }
       }
     }
     bool operator()(Function *F) {
-      return m_re && m_re->match(F->getName());
+      return m_re.has_value() && m_re.value().match(F->getName());
     }
   };
 
@@ -108,7 +109,7 @@ public:
         // in C++ local names are mangled with _ZL prefix, as we make functions
         // external, also rename
         auto name = F.getName();
-        if (name.startswith("_ZL") && name.size() > 3) {
+        if (name.starts_with("_ZL") && name.size() > 3) {
           F.setName("_Z" + name.substr(3));
         }
         // -- change linkage to external

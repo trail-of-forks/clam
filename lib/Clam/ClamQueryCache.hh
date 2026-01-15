@@ -4,8 +4,9 @@
 #include <clam/ClamQueryAPI.hh>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/DenseSet.h>
-#include <llvm/ADT/Optional.h>
 #include <llvm/IR/ConstantRange.h>
+
+#include <optional>
 
 namespace llvm {
 class Instruction;
@@ -40,17 +41,14 @@ public:
                           const llvm::MemoryLocation &loc2,
                           llvm::AAQueryInfo &AAQI) const;
   llvm::ConstantRange range(const llvm::Instruction &I,
-			    llvm::Optional<clam_abstract_domain> invAtEntry) const {
-    return range(I, 0, invAtEntry);
-  }
+                            std::optional<clam_abstract_domain> invAtEntry) const;
   llvm::ConstantRange range(const llvm::Instruction &Inst, unsigned i,
-			    llvm::Optional<clam_abstract_domain> invAtEntry) const;
+                            std::optional<clam_abstract_domain> invAtEntry) const;
   llvm::ConstantRange range(const llvm::BasicBlock &B, const llvm::Value &V,
-			    llvm::Optional<clam_abstract_domain> invAtEntry) const ;
-  llvm::Optional<TagVector> tags(const llvm::Instruction &I,
-				 llvm::Optional<clam_abstract_domain> invAtEntry) const;
-  llvm::Optional<TagVector> tags(const llvm::BasicBlock &B, const llvm::Value &V,
-				 llvm::Optional<clam_abstract_domain> invAtEntry) const;
-  
+                            std::optional<clam_abstract_domain> invAtEntry) const;
+  std::optional<TagVector> tags(const llvm::Instruction &I,
+                                std::optional<clam_abstract_domain> invAtEntry) const;
+  std::optional<TagVector> tags(const llvm::BasicBlock &B, const llvm::Value &V,
+                                std::optional<clam_abstract_domain> invAtEntry) const;
 };
 } // end namespace clam
